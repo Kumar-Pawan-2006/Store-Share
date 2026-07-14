@@ -3,10 +3,8 @@ import { Pool, neonConfig } from '@neondatabase/serverless';
 import { PrismaNeon } from '@prisma/adapter-neon';
 import ws from 'ws';
 
-// Required for serverless edge connections locally or on Vercel
-if (typeof window === 'undefined') {
-  neonConfig.webSocketConstructor = ws;
-}
+// Required for serverless edge connections
+neonConfig.webSocketConstructor = ws;
 
 declare global {
   var prismaGlobalState: { prisma: PrismaClient | null } | undefined;

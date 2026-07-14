@@ -1,7 +1,7 @@
 import { NextAuthOptions } from "next-auth";
 import CredentialsProvider from "next-auth/providers/credentials";
-import bcrypt from "bcryptjs";
-import { db } from "./db";
+
+const BACKEND_URL = process.env.BACKEND_API_URL || "http://localhost:5000";
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -16,41 +16,32 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Please enter both email and password.");
         }
 
-        // Check if database URL is set
-        if (!process.env.DATABASE_URL) {
-          throw new Error("Neon Database is not connected. Please set up DATABASE_URL first.");
-        }
-
         try {
-          // Fetch user
-          const user = await db.user.findUnique({
-            where: { email: credentials.email.toLowerCase().trim() },
+          // Validate using backend API
+          const res = await fetch(`${BACKEND_URL}/api/auth/login`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({
+              email: credentials.email.toLowerCase().trim(),
+              password: credentials.password,
+            }),
           });
 
-          if (!user) {
-            throw new Error("Invalid email or password.");
+          const data = await res.json();
+
+          if (!res.ok || !data.success) {
+            throw new Error(data.message || "Invalid email or password.");
           }
 
-          // Compare password
-          const isValidPassword = await bcrypt.compare(credentials.password, user.hashedPassword);
-
-          if (!isValidPassword) {
-            throw new Error("Invalid email or password.");
-          }
-
-          return {
-            id: user.id,
-            email: user.email,
-            name: user.name,
-            role: user.role,
-            societyId: user.societyId,
-          };
+          return data.user; // id, email, name, role, societyId
         } catch (error: any) {
           console.error("Authentication helper error:", error);
-          if (error.message && error.message.includes("Invalid")) {
+          if (error.message && (error.message.includes("Invalid") || error.message.includes("enter both"))) {
             throw error;
           }
-          throw new Error("Database could not be reached. Ensure migrations are applied.");
+          throw new Error("Backend database could not be reached. Ensure backend migrations are applied and the backend runs.");
         }
       }
     })
@@ -81,5 +72,5 @@ export const authOptions: NextAuthOptions = {
     strategy: "jwt",
     maxAge: 30 * 24 * 60 * 60, // 30 days
   },
-  secret: process.env.NEXTAUTH_SECRET,
+  secret: process.env.NEXTAUTH_SECRET || "store-and-share-local-dev-secret-2026",
 };

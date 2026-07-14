@@ -7,7 +7,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Status } from "@prisma/client";
+import { Status } from "@/types";
 import { Save, Trash2, ShieldAlert, CheckCircle, Info } from "lucide-react";
 
 export function AdminSocietyEdit({ society }: { society: any }) {
@@ -31,7 +31,7 @@ export function AdminSocietyEdit({ society }: { society: any }) {
     e.preventDefault();
     setError(null);
     setSuccess(false);
-
+ 
     startTransition(async () => {
       try {
         const companySplit = 100 - customerSplit;
@@ -211,7 +211,7 @@ export function AdminSocietyEdit({ society }: { society: any }) {
 
           {/* Feedback alerts */}
           {success && (
-            <div className="flex items-center gap-2 p-3 text-xs bg-emerald-950/40 text-emerald-400 rounded-lg border border-emerald-500/20">
+            <div className="flex items-center gap-2 p-3 text-xs bg-emerald-955 text-emerald-400 rounded-lg border border-emerald-500/20">
               <CheckCircle className="h-4 w-4 shrink-0" />
               <span>Society configuration details saved successfully.</span>
             </div>

@@ -3,7 +3,7 @@
 import React, { useTransition } from "react";
 import { updateB2BLeadStatus } from "@/lib/actions/db-actions";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { LeadStatus } from "@prisma/client";
+import { LeadStatus } from "@/types";
 
 export function LeadStatusSelect({ leadId, currentStatus }: { leadId: string; currentStatus: LeadStatus }) {
   const [isPending, startTransition] = useTransition();

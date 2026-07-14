@@ -2,7 +2,6 @@ import React from "react";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import { Navbar } from "@/components/navbar";
-import { db } from "@/lib/db";
 import { AdminCharts, MonthlyTrendData, StreamBreakdownData } from "@/components/admin-charts";
 import { LeadStatusSelect } from "@/components/lead-status-select";
 import { AdminScaleProjector } from "@/components/admin-scale-projector";
@@ -15,6 +14,20 @@ import {
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
+
+const BACKEND_URL = process.env.BACKEND_API_URL || "http://localhost:5000";
+
+// Custom helper to check if backend is online
+async function checkBackendHealth() {
+  try {
+    const res = await fetch(`${BACKEND_URL}/health`, { next: { revalidate: 0 } });
+    if (res.ok) {
+      const data = await res.json();
+      return { online: true, databaseOffline: data.databaseOffline };
+    }
+  } catch (e) {}
+  return { online: false, databaseOffline: true };
+}
 
 export default async function AdminDashboardPage() {
   const session = await getServerSession(authOptions);
@@ -35,32 +48,31 @@ export default async function AdminDashboardPage() {
     );
   }
 
-  const dbOffline = !process.env.DATABASE_URL;
+  // Check backend health
+  const health = await checkBackendHealth();
   let societies: any[] = [];
   let leads: any[] = [];
   let errorMsg: string | null = null;
 
-  if (dbOffline) {
-    errorMsg = "Database variables are missing. Please configure DATABASE_URL to access B2B and portfolio tables.";
+  if (!health.online) {
+    errorMsg = "Backend API server is offline. Please make sure the backend is running on port 5000.";
+  } else if (health.databaseOffline) {
+    errorMsg = "Neon Database connection is missing on the Backend. Please verify DATABASE_URL is set in backend configurations.";
   } else {
     try {
-      // Query societies, energy history, monthly billing, and contracts
-      societies = await db.society.findMany({
-        include: {
-          revenueTransactions: true,
-          energyReadings: true,
-          amcContracts: true,
-        },
-        orderBy: { onboardedAt: "desc" },
+      // Query societies and leads via API
+      const societiesRes = await fetch(`${BACKEND_URL}/api/societies`, {
+        cache: "no-store",
       });
+      societies = await societiesRes.json();
 
-      // Query CRM business leads
-      leads = await db.b2BLead.findMany({
-        orderBy: { createdAt: "desc" },
+      const leadsRes = await fetch(`${BACKEND_URL}/api/leads`, {
+        cache: "no-store",
       });
+      leads = await leadsRes.json();
     } catch (e: any) {
       console.error("Admin dashboard database fetch failed:", e);
-      errorMsg = "Prisma query failed. Check if migrations are deploved and Neon database is configured.";
+      errorMsg = "Prisma query failed. Check if migrations are deployed and Neon database is configured.";
     }
   }
 
@@ -76,7 +88,7 @@ export default async function AdminDashboardPage() {
             <strong>Admin Panel Error:</strong> {errorMsg}
           </div>
           <p className="text-muted-foreground text-sm max-w-md leading-relaxed mb-6">
-            This live admin panel requires a connection to Vercel/Neon Postgres. Run the local seed command <code className="bg-slate-900 px-1 py-0.5 rounded text-primary text-xs">npm run db:seed</code> to set up credentials and populate societies.
+            This live admin panel requires a connection to Vercel/Neon Postgres. Run the local seed command <code className="bg-slate-900 px-1 py-0.5 rounded text-primary text-xs">npm run db:seed</code> inside the <code className="text-emerald-400">backend</code> directory to set up credentials and populate societies.
           </p>
           <Link href="/" className="px-4 py-2 bg-slate-900 border border-slate-800 rounded-lg text-sm hover:bg-slate-800 transition-colors">
             Return Home
@@ -281,7 +293,7 @@ export default async function AdminDashboardPage() {
                                 ? "bg-emerald-950/20 text-emerald-400 border-emerald-500/20" 
                                 : s.status === "ONBOARDING"
                                 ? "bg-amber-950/20 text-accent border-accent/20"
-                                : "bg-rose-950/35 text-rose-500 border-rose-500/20"
+                                : "bg-rose-955 text-rose-500 border-rose-500/20"
                             }`}>
                               {s.status}
                             </span>

@@ -2,7 +2,6 @@ import React from "react";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import { Navbar } from "@/components/navbar";
-import { db } from "@/lib/db";
 import { DashboardChart } from "@/components/dashboard-chart";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -14,6 +13,20 @@ import {
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
+
+const BACKEND_URL = process.env.BACKEND_API_URL || "http://localhost:5000";
+
+// Custom helper to check if backend is online
+async function checkBackendHealth() {
+  try {
+    const res = await fetch(`${BACKEND_URL}/health`, { next: { revalidate: 0 } });
+    if (res.ok) {
+      const data = await res.json();
+      return { online: true, databaseOffline: data.databaseOffline };
+    }
+  } catch (e) {}
+  return { online: false, databaseOffline: true };
+}
 
 export default async function DashboardPage() {
   const session = await getServerSession(authOptions);
@@ -31,39 +44,33 @@ export default async function DashboardPage() {
     );
   }
 
-  // Handle DB offline scenario gracefully
-  const dbOffline = !process.env.DATABASE_URL;
+  // Check backend health
+  const health = await checkBackendHealth();
   let errorMsg: string | null = null;
   let society: any = null;
 
-  if (dbOffline) {
-    errorMsg = "Database Connection Missing. Please verify DATABASE_URL is set in your Vercel/local configuration.";
+  if (!health.online) {
+    errorMsg = "Backend API server is offline. Please make sure the backend is running on port 5000.";
+  } else if (health.databaseOffline) {
+    errorMsg = "Neon Database connection is missing on the Backend. Please verify DATABASE_URL is set in backend configurations.";
   } else {
     try {
       if (!session.user.societyId) {
         errorMsg = "No housing society is currently associated with this login. Please contact our support team.";
       } else {
-        society = await db.society.findUnique({
-          where: { id: session.user.societyId },
-          include: {
-            batteryUnit: true,
-            amcContracts: true,
-            revenueTransactions: {
-              orderBy: { date: "desc" },
-            },
-            energyReadings: {
-              orderBy: { date: "asc" },
-            }
-          }
+        const res = await fetch(`${BACKEND_URL}/api/societies/${session.user.societyId}`, {
+          cache: "no-store"
         });
 
-        if (!society) {
+        if (!res.ok) {
           errorMsg = "Linked housing society could not be found in the database. Ensure seed script has run.";
+        } else {
+          society = await res.json();
         }
       }
     } catch (e: any) {
-      console.error("Database query failed:", e);
-      errorMsg = "Database query error. Ensure database migrations have been successfully deployed.";
+      console.error("Dashboard API query failed:", e);
+      errorMsg = "Backend query error. Ensure backend database migrations have been successfully deployed.";
     }
   }
 
@@ -79,7 +86,7 @@ export default async function DashboardPage() {
             <strong>Platform Alert:</strong> {errorMsg}
           </div>
           <p className="text-muted-foreground text-sm max-w-md leading-relaxed mb-6">
-            If you are hosting this demo, ensure environment variables are configured. Run <code className="bg-slate-900 px-1.5 py-0.5 rounded text-primary text-xs">npm run db:migrate</code> and <code className="bg-slate-900 px-1.5 py-0.5 rounded text-primary text-xs">npm run db:seed</code> locally to populate the database.
+            If you are hosting this demo, ensure environment variables are configured. Run <code className="bg-slate-900 px-1.5 py-0.5 rounded text-primary text-xs">npm run db:migrate</code> and <code className="bg-slate-900 px-1.5 py-0.5 rounded text-primary text-xs">npm run db:seed</code> inside the <code className="text-emerald-400">backend</code> directory to populate the database.
           </p>
           <div className="flex gap-4">
             <Link href="/" className="px-4 py-2 bg-slate-900 border border-slate-800 rounded-lg text-sm hover:bg-slate-800 transition-colors">
@@ -99,7 +106,6 @@ export default async function DashboardPage() {
   const latestTx = transactions[0] || null; // Sorted desc
   const currentMonthEarning = latestTx ? latestTx.customerEarning : 0;
   const currentMonthBaselineLoss = latestTx ? latestTx.baselineValue : 0;
-  const currentMonthPlatformValue = latestTx ? latestTx.platformValue : 0;
 
   // YTD Savings (sum of all customerEarning)
   const ytdSavings = transactions.reduce((sum: number, tx: any) => sum + tx.customerEarning, 0);
@@ -244,7 +250,7 @@ export default async function DashboardPage() {
                     </>
                   )}
                 </span>
-                <span className="bg-amber-900/50 px-2 py-0.5 rounded text-[9px] border border-amber-500/20">
+                <span className="bg-amber-900/55 px-2 py-0.5 rounded text-[9px] border border-amber-500/20">
                   {nextPayoutStatus}
                 </span>
               </div>
@@ -290,7 +296,7 @@ export default async function DashboardPage() {
                               <span className={`px-2 py-0.5 rounded-full text-[9px] font-semibold border ${
                                 tx.payoutStatus === "PAID" 
                                   ? "bg-emerald-950/20 text-emerald-400 border-emerald-500/20" 
-                                  : "bg-amber-950/20 text-accent border-accent/20 animate-pulse"
+                                  : "bg-amber-950/20 text-accent border-accent/20"
                               }`}>
                                 {tx.payoutStatus}
                               </span>
@@ -330,7 +336,7 @@ export default async function DashboardPage() {
                       ? "bg-emerald-950/30 text-emerald-400 border-emerald-500/25" 
                       : battery.healthStatus === "WARNING"
                       ? "bg-amber-950/30 text-accent border-accent/25"
-                      : "bg-rose-950/35 text-rose-500 border-rose-500/25 animate-pulse"
+                      : "bg-rose-950/35 text-rose-500 border-rose-500/25"
                   }`}>
                     <Heart className="h-3 w-3 fill-current shrink-0" />
                     {battery.healthStatus}

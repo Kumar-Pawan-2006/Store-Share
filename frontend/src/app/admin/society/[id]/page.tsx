@@ -2,7 +2,6 @@ import React from "react";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-options";
 import { Navbar } from "@/components/navbar";
-import { db } from "@/lib/db";
 import { DashboardChart } from "@/components/dashboard-chart";
 import { AdminSocietyEdit } from "@/components/admin-society-edit";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
@@ -20,6 +19,20 @@ interface PageProps {
   params: {
     id: string;
   };
+}
+
+const BACKEND_URL = process.env.BACKEND_API_URL || "http://localhost:5000";
+
+// Custom helper to check if backend is online
+async function checkBackendHealth() {
+  try {
+    const res = await fetch(`${BACKEND_URL}/health`, { next: { revalidate: 0 } });
+    if (res.ok) {
+      const data = await res.json();
+      return { online: true, databaseOffline: data.databaseOffline };
+    }
+  } catch (e) {}
+  return { online: false, databaseOffline: true };
 }
 
 export default async function AdminSocietyDetailPage({ params }: PageProps) {
@@ -41,30 +54,25 @@ export default async function AdminSocietyDetailPage({ params }: PageProps) {
     );
   }
 
-  const dbOffline = !process.env.DATABASE_URL;
+  // Check backend health
+  const health = await checkBackendHealth();
   let society: any = null;
   let errorMsg: string | null = null;
 
-  if (dbOffline) {
-    errorMsg = "Database variables are missing. Please set DATABASE_URL.";
+  if (!health.online) {
+    errorMsg = "Backend API server is offline. Please make sure the backend is running on port 5000.";
+  } else if (health.databaseOffline) {
+    errorMsg = "Neon Database connection is missing on the Backend. Please verify DATABASE_URL is set in backend configurations.";
   } else {
     try {
-      society = await db.society.findUnique({
-        where: { id: params.id },
-        include: {
-          batteryUnit: true,
-          amcContracts: true,
-          revenueTransactions: {
-            orderBy: { date: "desc" },
-          },
-          energyReadings: {
-            orderBy: { date: "asc" },
-          }
-        }
+      const res = await fetch(`${BACKEND_URL}/api/societies/${params.id}`, {
+        cache: "no-store",
       });
 
-      if (!society) {
+      if (!res.ok) {
         errorMsg = "Society profile could not be located in database. It may have been deleted.";
+      } else {
+        society = await res.json();
       }
     } catch (e: any) {
       console.error("Failed to query society profile:", e);
@@ -80,7 +88,7 @@ export default async function AdminSocietyDetailPage({ params }: PageProps) {
         <main className="flex-1 max-w-4xl mx-auto px-4 py-16 flex flex-col items-center justify-center text-center">
           <AlertTriangle className="h-16 w-16 text-rose-500 mb-6 animate-pulse" />
           <h1 className="text-3xl font-extrabold tracking-tight mb-4">Error Accessing Profile</h1>
-          <div className="p-6 bg-rose-950/20 border border-rose-500/20 rounded-xl leading-relaxed text-sm text-rose-300 max-w-xl mb-6">
+          <div className="p-6 bg-rose-955 text-rose-300 border border-rose-500/20 rounded-xl leading-relaxed text-sm max-w-xl mb-6">
             <strong>Admin Action Error:</strong> {errorMsg}
           </div>
           <Link href="/admin" className="px-4 py-2 bg-primary text-primary-foreground font-semibold rounded-lg text-sm hover:bg-primary/95 transition-colors">
@@ -126,7 +134,7 @@ export default async function AdminSocietyDetailPage({ params }: PageProps) {
         </Link>
 
         {/* Info Banner */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-emerald-950/10 border border-emerald-900/25 p-6 rounded-2xl relative overflow-hidden shadow-md">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-emerald-955 text-slate-100 p-6 rounded-2xl relative overflow-hidden shadow-md">
           <div className="absolute top-0 right-0 w-24 h-24 bg-accent/5 rounded-full blur-2xl pointer-events-none" />
           <div>
             <div className="flex items-center gap-2 mb-1.5">
@@ -142,7 +150,7 @@ export default async function AdminSocietyDetailPage({ params }: PageProps) {
               Society contact person: <strong className="text-slate-200">{society.contactPersonName}</strong> • {society.contactEmail} • {society.contactPhone}
             </p>
           </div>
-          <div className="text-[10px] text-muted-foreground bg-zinc-950/70 p-3 rounded-lg border border-slate-900 border-dashed">
+          <div className="text-[10px] text-muted-foreground bg-zinc-955 p-3 rounded-lg border border-slate-900 border-dashed">
             Onboarded: <strong className="text-slate-100">{new Date(society.onboardedAt).toLocaleDateString("en-IN")}</strong>
           </div>
         </div>
@@ -221,7 +229,7 @@ export default async function AdminSocietyDetailPage({ params }: PageProps) {
                             <TableCell className="text-center">
                               <span className={`px-2 py-0.5 rounded-full text-[9px] font-bold border ${
                                 tx.payoutStatus === "PAID" 
-                                  ? "bg-emerald-955 text-emerald-400 border-emerald-500/20" 
+                                  ? "bg-emerald-950/20 text-emerald-400 border-emerald-500/20" 
                                   : "bg-amber-955 text-accent border-accent/20"
                               }`}>
                                 {tx.payoutStatus}
